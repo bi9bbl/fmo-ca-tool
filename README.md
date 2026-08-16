@@ -26,14 +26,14 @@ GitHub Package 页面：https://github.com/bi9bbl/fmo-ca-tool/pkgs/container/fmo
 - 工作流源码：[`.github/workflows/docker.yml`](.github/workflows/docker.yml)
 - Dockerfile：[`Dockerfile`](Dockerfile)
 
-工作流在公开 GitHub-hosted runner 上构建 `linux/amd64` 和 `linux/arm64`，推送 GHCR，并同时生成：
+唯一的工作流在公开 GitHub-hosted runner 上测试源码、构建 `linux/amd64` 和 `linux/arm64` 镜像，并在发布时生成：
 
-- 最大级别的 BuildKit provenance。
-- SBOM。
 - 使用 GitHub OIDC 与 Sigstore 签名的 SLSA build provenance attestation。
 - 与具体 Git commit 对应的 OCI `source` 和 `revision` labels。
 
-向 `main` 推送、推送 `v*` tag 或手动执行 workflow 时，镜像会上传到当前仓库对应的 GitHub Container Registry package；Pull Request 只执行构建验证，不登录 registry，也不上传镜像。package 名称由 `${GITHUB_REPOSITORY}` 自动转换为小写生成，不依赖硬编码的仓库所有者或仓库名。
+只有推送 `v*` tag 时，镜像才会上传到当前仓库对应的 GitHub Container Registry package，并为同一 digest 写入版本 tag 与 `latest`。向 `main` 推送、Pull Request 和手动执行 workflow 都只做测试与构建验证，不登录 registry，也不上传镜像。package 名称由 `${GITHUB_REPOSITORY}` 自动转换为小写生成，不依赖硬编码的仓库所有者或仓库名。
+
+GHCR 可能把多架构镜像的 amd64、arm64 子清单显示为 untagged 项；它们不是独立发布版本。对外版本只以 `v*` tag 对应的顶层 digest 为准。签名 attestation 保存在 GitHub Attestations 服务中，不再额外向 GHCR 写入 `sha256-*` package tag。
 
 Docker 构建所用的基础镜像以不可变 digest 固定，依赖解析使用仓库内的 lock file；发布工作流引用的第三方 Actions 也固定到完整 commit SHA。修改基础镜像、依赖、Dockerfile、工作流或应用源码都必须表现为公开的 Git commit。
 
