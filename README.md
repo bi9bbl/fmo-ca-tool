@@ -17,6 +17,8 @@
 ghcr.io/bi9bbl/fmo-ca-tool
 ```
 
+GitHub Package 页面：https://github.com/bi9bbl/fmo-ca-tool/pkgs/container/fmo-ca-tool
+
 镜像由仓库中的公开工作流构建：
 
 - 源代码：https://github.com/bi9bbl/fmo-ca-tool
@@ -30,6 +32,8 @@ ghcr.io/bi9bbl/fmo-ca-tool
 - SBOM。
 - 使用 GitHub OIDC 与 Sigstore 签名的 SLSA build provenance attestation。
 - 与具体 Git commit 对应的 OCI `source` 和 `revision` labels。
+
+向 `main` 推送、推送 `v*` tag 或手动执行 workflow 时，镜像会上传到当前仓库对应的 GitHub Container Registry package；Pull Request 只执行构建验证，不登录 registry，也不上传镜像。package 名称由 `${GITHUB_REPOSITORY}` 自动转换为小写生成，不依赖硬编码的仓库所有者或仓库名。
 
 Docker 构建所用的基础镜像以不可变 digest 固定，依赖解析使用仓库内的 lock file；发布工作流引用的第三方 Actions 也固定到完整 commit SHA。修改基础镜像、依赖、Dockerfile、工作流或应用源码都必须表现为公开的 Git commit。
 
