@@ -17,6 +17,18 @@
 ghcr.io/bi9bbl/fmo-ca-tool
 ```
 
+镜像标签同时提供自动选择架构的多架构版本，以及带 CPU 架构后缀的单架构版本：
+
+```text
+ghcr.io/bi9bbl/fmo-ca-tool:latest
+ghcr.io/bi9bbl/fmo-ca-tool:latest-amd64
+ghcr.io/bi9bbl/fmo-ca-tool:latest-arm64
+```
+
+`latest`、`main`、`sha-<40位Git提交>`、原始 `v*` Git tag 和语义版本标签都会生成对应的 `-amd64`、`-arm64` 标签。没有指定后缀时，Docker 会从多架构索引中自动选择与宿主机匹配的镜像。顶层多架构 digest、amd64 manifest digest 和 arm64 manifest digest 会分别生成 GitHub attestation，因此架构标签也可以独立验证。
+
+> **不要拉取 `sha256-<64位镜像digest>` 标签。** 旧工作流曾把签名证明以这种标签写入 GHCR；它是 OCI attestation，不是容器镜像，拉取时可能报 `unsupported media type application/vnd.oci.empty.v1+json`。可运行的 Git 提交标签以 `sha-` 开头，长度为 40 位 Git commit SHA；也可以直接使用经过验证的 `name@sha256:...` 镜像 digest。
+
 镜像由仓库中的公开工作流构建：
 
 - 源代码：https://github.com/bi9bbl/fmo-ca-tool
@@ -30,6 +42,8 @@ ghcr.io/bi9bbl/fmo-ca-tool
 - SBOM。
 - 使用 GitHub OIDC 与 Sigstore 签名的 SLSA build provenance attestation。
 - 与具体 Git commit 对应的 OCI `source` 和 `revision` labels。
+
+GitHub 签名 attestation 保存在 GitHub Attestations 服务中，不再以 `sha256-*` 标签推送到 GHCR。历史上已经存在的证明标签不会自动删除，但不应作为镜像拉取或运行。
 
 Docker 构建所用的基础镜像以不可变 digest 固定，依赖解析使用仓库内的 lock file；发布工作流引用的第三方 Actions 也固定到完整 commit SHA。修改基础镜像、依赖、Dockerfile、工作流或应用源码都必须表现为公开的 Git commit。
 
@@ -100,6 +114,8 @@ docker pull $PinnedImage
 docker image inspect $PinnedImage --format '{{json .Config.Labels}}'
 ```
 
+验证单架构标签时，把拉取标签改为 `${TAG}-amd64` 或 `${TAG}-arm64`，但 `--source-ref` 仍必须使用产生该镜像的原始 Git tag `refs/tags/${TAG}`。工作流会为两个架构 manifest 分别生成 attestation。
+
 验证成功后，还应打开对应的公开 Action run，核对：
 
 - run 使用的 commit 与已审计 commit 相同。
@@ -148,6 +164,26 @@ docker buildx build \
 ```bash
 docker build -t fmo-ca-tool:local .
 docker run --rm --network none fmo-ca-tool:local --help
+```
+
+公开镜像会自动选择当前主机架构：
+
+```bash
+docker pull ghcr.io/bi9bbl/fmo-ca-tool:latest
+docker image inspect ghcr.io/bi9bbl/fmo-ca-tool:latest \
+  --format '{{.Os}}/{{.Architecture}}'
+```
+
+也可以显式选择并验证 CPU 架构：
+
+```bash
+docker pull --platform linux/amd64 ghcr.io/bi9bbl/fmo-ca-tool:latest-amd64
+docker pull --platform linux/arm64 ghcr.io/bi9bbl/fmo-ca-tool:latest-arm64
+
+docker image inspect ghcr.io/bi9bbl/fmo-ca-tool:latest-amd64 \
+  --format '{{.Os}}/{{.Architecture}}'
+docker image inspect ghcr.io/bi9bbl/fmo-ca-tool:latest-arm64 \
+  --format '{{.Os}}/{{.Architecture}}'
 ```
 
 已验证的公开镜像应写成不可变形式：
