@@ -1,0 +1,22 @@
+name: fmo-ca-tool
+
+services:
+  cli:
+    image: fmo-ca-tool:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    user: "${FMO_CA_UID:-1654}:${FMO_CA_GID:-1654}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - type: bind
+        source: ./pki
+        target: /work/pki
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    profiles:
+      - cli

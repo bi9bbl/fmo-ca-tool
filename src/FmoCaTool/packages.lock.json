@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "Chaos.NaCl.Standard": {
+        "type": "Direct",
+        "requested": "[1.0.0, )",
+        "resolved": "1.0.0",
+        "contentHash": "8ajPyzu49LSIdPgeg56eDdKu1j8FZJngKgTn9rXHV3GNVly49XFvPAwoWuUT8xPze3OjVUOWQZaO82HWrYFFEw=="
+      },
+      "Microsoft.NET.ILLink.Tasks": {
+        "type": "Direct",
+        "requested": "[10.0.11, )",
+        "resolved": "10.0.11",
+        "contentHash": "IBf7lbovvjGWVWXZX5cJ/cO0WXbId0Zq4BuSeT94mGZuOAP66oMeH9PTBZ9Jpp3Jb6jtK0qm/NyUbPRo1gC/wQ=="
+      },
+      "System.Formats.Cbor": {
+        "type": "Direct",
+        "requested": "[10.0.9, )",
+        "resolved": "10.0.9",
+        "contentHash": "1iRjljxTMvQ1EtArg6kkj+9PV5LthrtlH//GM+MLez5L9jmZFDXGoH9lNiUpOeYY3sB60CgFVRnGctcmHEKqRw=="
+      }
+    },
+    "net10.0/linux-arm64": {},
+    "net10.0/linux-x64": {},
+    "net10.0/osx-arm64": {},
+    "net10.0/osx-x64": {},
+    "net10.0/win-x64": {}
+  }
+}

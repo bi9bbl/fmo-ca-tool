@@ -1,0 +1,41 @@
+{
+  "subjectPrivateKeySeed": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8",
+  "issuerPrivateKeySeed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "certificate": {
+    "sn": 900001001,
+    "type": "intermediateCA",
+    "issuer": {
+      "sn": 900000001,
+      "name": "BI9BBL FMO Root CA",
+      "publicKey": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+    },
+    "subject": {
+      "name": "BI9BBL FMO Issuing CA",
+      "email": "ca@example.com",
+      "publicKey": "Kay64UG8yvCyLhqU000LxzYeUm0L_hLIl5S8kyKWbdc"
+    },
+    "extensions": {
+      "isCA": true,
+      "pathLen": 0,
+      "keyId": "bi9bbl-intermediate-2026",
+      "crl": "",
+      "license": "",
+      "uidRange": {
+        "start": 1,
+        "end": 99999999
+      },
+      "issuingCountries": [
+        "CN",
+        "JP",
+        "US"
+      ]
+    },
+    "iat": 1783291491,
+    "exp": 1940971391,
+    "signatureAlgorithm": "Ed25519",
+    "signature": "-bchwx4d5ojqyyj9aI072CGrYZsUm4-0sMq2Vjl9kTJ-8k1umwcKIAdLjby2i4Gb-rDbmShGd6Vk9C-b7ve2CQ"
+  },
+  "expectedTbsCborHex": "9463464d4f046e696e7465726d65646961746543411a35a4ece91a35a4e9017242493942424c20464d4f20526f6f74204341582003a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b87542493942424c20464d4f2049737375696e672043416e6361406578616d706c652e636f6d582029acbae141bccaf0b22e1a94d34d0bc7361e526d0bfe12c89794bc9322966dd7f500781862693962626c2d696e7465726d6564696174652d323032366060011a05f5e0ff8362434e624a506255531a6a4ade631a73b0df7f",
+  "expectedSignature": "-bchwx4d5ojqyyj9aI072CGrYZsUm4-0sMq2Vjl9kTJ-8k1umwcKIAdLjby2i4Gb-rDbmShGd6Vk9C-b7ve2CQ",
+  "expectedFingerprint": "QwsKcrxTF4wpAgkCQRQTc1pMUb-QxEU7tIeLzrfYs88"
+}

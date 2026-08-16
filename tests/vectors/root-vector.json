@@ -1,0 +1,29 @@
+{
+  "privateKeySeed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "certificate": {
+    "sn": 900000001,
+    "type": "rootCA",
+    "issuer": {
+      "name": "BI9BBL FMO Root CA",
+      "email": "ca@example.com"
+    },
+    "subject": {
+      "name": "BI9BBL FMO Root CA",
+      "publicKey": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"
+    },
+    "extensions": {
+      "isCA": true,
+      "pathLen": 1,
+      "crl": "",
+      "license": "",
+      "keyId": "bi9bbl-root-2026"
+    },
+    "iat": 1783291391,
+    "exp": 2098651391,
+    "signatureAlgorithm": "Ed25519",
+    "signature": "Rrd6jJvFyJRYLdrwuxUBsgz-MNnB4CbMoMapUH4MXtbL-YHY0SiWxmZi5Jto1MCVLgwX7rGHhr6MJNGCVrLiCg"
+  },
+  "expectedTbsCborHex": "8f63464d4f0466726f6f7443411a35a4e9017242493942424c20464d4f20526f6f742043416e6361406578616d706c652e636f6d7242493942424c20464d4f20526f6f74204341582003a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8f50160607062693962626c2d726f6f742d323032361a6a4addff1a7d16e0ff",
+  "expectedSignature": "Rrd6jJvFyJRYLdrwuxUBsgz-MNnB4CbMoMapUH4MXtbL-YHY0SiWxmZi5Jto1MCVLgwX7rGHhr6MJNGCVrLiCg",
+  "expectedFingerprint": "YdhLNPyCHjpLGq0rIM9K89O73C9HK57G6RcwWNnjN_8"
+}

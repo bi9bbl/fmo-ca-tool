@@ -1,0 +1,20 @@
+{
+  "subjectPrivateKeySeed": "QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl8",
+  "issuerPrivateKeySeed": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8",
+  "certificate": {
+    "type": "userCert",
+    "issuerSn": 900001001,
+    "subject": {
+      "callsign": "BI9BBL",
+      "uid": 12345,
+      "publicKey": "JUO5L_EJVRFHatyDadtt3JM2ZaEZeN2hQE7hBmypVZ0"
+    },
+    "iat": 1783291591,
+    "exp": 1814827591,
+    "signatureAlgorithm": "Ed25519",
+    "signature": "HntMR_GS7CTTVkf1lJlYNxLj1CyxiNOLHjqZ2SmH4iyWz_eZWXPx4MnSiQwWzIIrd0I9S9Ihaxn0JWnDoWtCBw"
+  },
+  "expectedTbsCborHex": "8963464d4f046875736572436572741a35a4ece96642493942424c19303958202543b92ff1095511476adc8369db6ddc933665a11978dda1404ee1066ca9559d1a6a4adec71a6c2c1247",
+  "expectedSignature": "HntMR_GS7CTTVkf1lJlYNxLj1CyxiNOLHjqZ2SmH4iyWz_eZWXPx4MnSiQwWzIIrd0I9S9Ihaxn0JWnDoWtCBw",
+  "expectedFingerprint": "SEOgO9KCaCXN8R1TsUwUFbfAw_Z8aJLPjWW1yssGKhA"
+}

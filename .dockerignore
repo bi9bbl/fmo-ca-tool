@@ -1,0 +1,13 @@
+.git
+.github
+.vs
+.vscode
+artifacts
+bin
+obj
+pki
+tests
+**/bin
+**/obj
+*.user
+*.suo

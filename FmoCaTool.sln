@@ -1,0 +1,25 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FmoCaTool", "src\FmoCaTool\FmoCaTool.csproj", "{10C75556-3D96-4D4C-AD7A-87BF61BC5B53}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FmoCaTool.Tests", "tests\FmoCaTool.Tests\FmoCaTool.Tests.csproj", "{F901C917-EDC0-4EB2-8A7A-E299EE694F75}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{10C75556-3D96-4D4C-AD7A-87BF61BC5B53}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{10C75556-3D96-4D4C-AD7A-87BF61BC5B53}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{10C75556-3D96-4D4C-AD7A-87BF61BC5B53}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{10C75556-3D96-4D4C-AD7A-87BF61BC5B53}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F901C917-EDC0-4EB2-8A7A-E299EE694F75}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F901C917-EDC0-4EB2-8A7A-E299EE694F75}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F901C917-EDC0-4EB2-8A7A-E299EE694F75}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F901C917-EDC0-4EB2-8A7A-E299EE694F75}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
