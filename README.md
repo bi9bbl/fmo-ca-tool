@@ -1,4 +1,4 @@
-# fmo-ca-tool
+# fmo-ca-tool Docker image
 
 `fmo-ca-tool` 是 FMO V4 自定义 PKI 的离线 CA 命令行容器，用于：
 
@@ -17,8 +17,6 @@
 ghcr.io/bi9bbl/fmo-ca-tool
 ```
 
-GitHub Package 页面：https://github.com/bi9bbl/fmo-ca-tool/pkgs/container/fmo-ca-tool
-
 镜像由仓库中的公开工作流构建：
 
 - 源代码：https://github.com/bi9bbl/fmo-ca-tool
@@ -26,32 +24,12 @@ GitHub Package 页面：https://github.com/bi9bbl/fmo-ca-tool/pkgs/container/fmo
 - 工作流源码：[`.github/workflows/docker.yml`](.github/workflows/docker.yml)
 - Dockerfile：[`Dockerfile`](Dockerfile)
 
-唯一的工作流在公开 GitHub-hosted runner 上测试源码、构建 `linux/amd64` 和 `linux/arm64` 镜像，并在发布时生成：
+工作流在公开 GitHub-hosted runner 上构建 `linux/amd64` 和 `linux/arm64`，推送 GHCR，并同时生成：
 
+- 最大级别的 BuildKit provenance。
+- SBOM。
 - 使用 GitHub OIDC 与 Sigstore 签名的 SLSA build provenance attestation。
 - 与具体 Git commit 对应的 OCI `source` 和 `revision` labels。
-
-工作流行为：
-
-| 触发事件 | 测试 | amd64/arm64 构建 | 上传 GHCR | 签名 attestation |
-| --- | --- | --- | --- | --- |
-| Pull Request 到 `main` | 是 | 是 | 否 | 否 |
-| push 到 `main` | 是 | 是 | 否 | 否 |
-| 手动 `workflow_dispatch` | 是 | 是 | 否 | 否 |
-| push `v*` tag | 是 | 是 | 是 | 是 |
-
-只有推送 `v*` tag 才会创建 Package 版本，并为同一顶层 digest 写入原始版本 tag（例如 `v1.0.0`）与 `latest`。package 名称由 `${GITHUB_REPOSITORY}` 自动转换为小写生成，不依赖硬编码的仓库所有者或仓库名。
-
-发布新版本：
-
-```bash
-git tag v1.0.0 <AUDITED_COMMIT_SHA>
-git push origin v1.0.0
-```
-
-不要通过普通 `main` push 或手动运行 workflow 发布镜像；这两种事件不会登录 registry，也不会上传任何 Package 内容。
-
-GHCR 可能把多架构镜像的 amd64、arm64 子清单显示为 untagged 项；它们不是独立发布版本。对外版本只以 `v*` tag 对应的顶层 digest 为准。签名 attestation 保存在 GitHub Attestations 服务中，不再额外向 GHCR 写入 `sha256-*` package tag。
 
 Docker 构建所用的基础镜像以不可变 digest 固定，依赖解析使用仓库内的 lock file；发布工作流引用的第三方 Actions 也固定到完整 commit SHA。修改基础镜像、依赖、Dockerfile、工作流或应用源码都必须表现为公开的 Git commit。
 
@@ -65,7 +43,7 @@ GHCR Container package 的可见性可以独立于仓库。仓库维护者第一
 
 ## 拉取并严格验证公开镜像
 
-不要只依赖 `latest` 或版本标签。这些标签可以移动。生产环境应先解析并记录不可变 digest，之后始终通过 `name@sha256:...` 使用镜像。
+不要只依赖 `latest`、`main` 或版本标签。这些标签可以移动。生产环境应先解析并记录不可变 digest，之后始终通过 `name@sha256:...` 使用镜像。
 
 以下示例验证：
 
@@ -158,12 +136,10 @@ docker run --rm --network none \
 ```bash
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  --provenance=false \
-  --sbom=false \
+  --provenance=mode=max \
+  --sbom=true \
   --output type=oci,dest=fmo-ca-tool.oci .
 ```
-
-这与公开 Action 的镜像构建参数一致。公开发布的签名 provenance 由后续 GitHub Attestations 步骤单独生成并存入 GitHub，不作为额外的 GHCR manifest 或 `sha256-*` Package tag 上传。
 
 ## 快速运行
 
