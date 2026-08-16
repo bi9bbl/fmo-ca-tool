@@ -1,4 +1,4 @@
-# fmo-ca-tool Docker image
+# fmo-ca-tool
 
 `fmo-ca-tool` 是 FMO V4 自定义 PKI 的离线 CA 命令行容器，用于：
 
