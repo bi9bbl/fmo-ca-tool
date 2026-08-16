@@ -7,8 +7,6 @@
 - 使用 Intermediate CA 签发 User Certificate。
 - 计算 `SHA-256(ToTbsCbor())` 定义的 FMO 证书指纹。
 
-这不是 X.509 CA。镜像入口直接是 `fmo-ca-tool`，容器名后填写 `init-root`、`issue-intermediate`、`issue-user` 或 `fingerprint`。
-
 ## 镜像和公开构建
 
 公开镜像地址：
@@ -27,8 +25,6 @@ ghcr.io/bi9bbl/fmo-ca-tool:latest-arm64
 
 `latest`、`main`、`sha-<40位Git提交>`、原始 `v*` Git tag 和语义版本标签都会生成对应的 `-amd64`、`-arm64` 标签。没有指定后缀时，Docker 会从多架构索引中自动选择与宿主机匹配的镜像。顶层多架构 digest、amd64 manifest digest 和 arm64 manifest digest 会分别生成 GitHub attestation，因此架构标签也可以独立验证。
 
-> **不要拉取 `sha256-<64位镜像digest>` 标签。** 旧工作流曾把签名证明以这种标签写入 GHCR；它是 OCI attestation，不是容器镜像，拉取时可能报 `unsupported media type application/vnd.oci.empty.v1+json`。可运行的 Git 提交标签以 `sha-` 开头，长度为 40 位 Git commit SHA；也可以直接使用经过验证的 `name@sha256:...` 镜像 digest。
-
 镜像由仓库中的公开工作流构建：
 
 - 源代码：https://github.com/bi9bbl/fmo-ca-tool
@@ -43,17 +39,9 @@ ghcr.io/bi9bbl/fmo-ca-tool:latest-arm64
 - 使用 GitHub OIDC 与 Sigstore 签名的 SLSA build provenance attestation。
 - 与具体 Git commit 对应的 OCI `source` 和 `revision` labels。
 
-GitHub 签名 attestation 保存在 GitHub Attestations 服务中，不再以 `sha256-*` 标签推送到 GHCR。历史上已经存在的证明标签不会自动删除，但不应作为镜像拉取或运行。
-
 Docker 构建所用的基础镜像以不可变 digest 固定，依赖解析使用仓库内的 lock file；发布工作流引用的第三方 Actions 也固定到完整 commit SHA。修改基础镜像、依赖、Dockerfile、工作流或应用源码都必须表现为公开的 Git commit。
 
 > **重要：**“仓库公开”不等于“代码已经安全审计”。密码学证明只能确认镜像来自哪个仓库、commit 和工作流，不能代替人工代码审计。生产 Root CA 应先审计准备使用的确切 commit，再验证所拉镜像的 attestation 确实指向该 commit。
-
-### 首次发布时的 GHCR 可见性
-
-GHCR Container package 的可见性可以独立于仓库。仓库维护者第一次推送镜像后，必须在 GitHub package settings 中将 `fmo-ca-tool` 设置为 **Public**，并保持它与本仓库关联。只有 Public package 才能匿名拉取。
-
-如果匿名 `docker pull` 返回权限错误，不要改用来源不明的镜像；应检查 GHCR package 是否已经公开，或直接从审计过的 Git commit 本地构建。
 
 ## 拉取并严格验证公开镜像
 
