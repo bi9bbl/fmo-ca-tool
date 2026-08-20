@@ -1,453 +1,173 @@
 # fmo-ca-tool
 
-`fmo-ca-tool` 是 FMO V4 自定义 PKI 的离线 CA 命令行容器，用于：
+## 项目说明
 
-- 创建自签名 FMO Root CA。
-- 使用 Root CA 签发 Intermediate CA。
-- 使用 Intermediate CA 签发 User Certificate。
-- 计算 `SHA-256(ToTbsCbor())` 定义的 FMO 证书指纹。
+`fmo-ca-tool` 是面向 FMO V4 自定义 PKI 的离线 CA 工具。它实现的是 FMO 证书协议，而不是 X.509，职责限定为：
 
-## 镜像和公开构建
+- 创建自签名 Root CA。
+- 由 Root CA 签发 Intermediate CA。
+- 由 Intermediate CA 签发 User Certificate。
+- 计算协议定义的证书指纹。
 
-公开镜像地址：
+项目只公开 `init-root`、`issue-intermediate`、`issue-user` 和 `fingerprint` 四个命令，不提供守护进程、Web UI、在线 CA 服务或 CRL 签发服务。运行、镜像验证、签发流程、离线部署与私钥保管方法统一见[操作指南](docs/operations.md)。
 
-```text
-ghcr.io/bi9bbl/fmo-ca-tool
-```
+本实现以与 SAS 的字节级兼容为目标：Root、Intermediate 和 User Certificate 的待签名 CBOR 已与 SAS 实现逐字节比对，证书链签名验证与 Root trust store 加载也通过兼容性验证。项目采用 [GNU General Public License v3.0](LICENSE)，兼容性来源与第三方组件见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-镜像标签同时提供自动选择架构的多架构版本，以及带 CPU 架构后缀的单架构版本：
+## 设计说明
 
-```text
-ghcr.io/bi9bbl/fmo-ca-tool:latest
-ghcr.io/bi9bbl/fmo-ca-tool:latest-amd64
-ghcr.io/bi9bbl/fmo-ca-tool:latest-arm64
-```
+### 信任层级
 
-`latest`、`main`、`sha-<40位Git提交>`、原始 `v*` Git tag 和语义版本标签都会生成对应的 `-amd64`、`-arm64` 标签。没有指定后缀时，Docker 会从多架构索引中自动选择与宿主机匹配的镜像。顶层多架构 digest、amd64 manifest digest 和 arm64 manifest digest 会分别生成 GitHub attestation，因此架构标签也可以独立验证。
-
-镜像由仓库中的公开工作流构建：
-
-- 源代码：https://github.com/bi9bbl/fmo-ca-tool
-- 构建工作流：https://github.com/bi9bbl/fmo-ca-tool/actions/workflows/docker.yml
-- 工作流源码：[`.github/workflows/docker.yml`](.github/workflows/docker.yml)
-- Dockerfile：[`Dockerfile`](Dockerfile)
-
-工作流在公开 GitHub-hosted runner 上构建 `linux/amd64` 和 `linux/arm64`，推送 GHCR，并同时生成：
-
-- 最大级别的 BuildKit provenance。
-- SBOM。
-- 使用 GitHub OIDC 与 Sigstore 签名的 SLSA build provenance attestation。
-- 与具体 Git commit 对应的 OCI `source` 和 `revision` labels。
-
-Docker 构建所用的基础镜像以不可变 digest 固定，依赖解析使用仓库内的 lock file；发布工作流引用的第三方 Actions 也固定到完整 commit SHA。修改基础镜像、依赖、Dockerfile、工作流或应用源码都必须表现为公开的 Git commit。
-
-> **重要：**“仓库公开”不等于“代码已经安全审计”。密码学证明只能确认镜像来自哪个仓库、commit 和工作流，不能代替人工代码审计。生产 Root CA 应先审计准备使用的确切 commit，再验证所拉镜像的 attestation 确实指向该 commit。
-
-## 拉取并严格验证公开镜像
-
-不要只依赖 `latest`、`main` 或版本标签。这些标签可以移动。生产环境应先解析并记录不可变 digest，之后始终通过 `name@sha256:...` 使用镜像。
-
-以下示例验证：
-
-1. 镜像 attestation 属于 `bi9bbl/fmo-ca-tool`。
-2. 签名者是本仓库的 `docker.yml` 工作流。
-3. 构建没有使用 self-hosted runner。
-4. 构建源 ref 是指定版本 tag。
-5. 构建源 commit 与人工审计并记录的 40 位 Git commit SHA 完全一致。
-
-```bash
-TAG=v1.0.0
-REPOSITORY=ghcr.io/bi9bbl/fmo-ca-tool
-AUDITED_COMMIT='<40_CHARACTER_AUDITED_COMMIT_SHA>'
-
-docker pull "${REPOSITORY}:${TAG}"
-PINNED_IMAGE="$(docker image inspect "${REPOSITORY}:${TAG}" \
-  --format '{{index .RepoDigests 0}}')"
-
-printf 'Pinned image: %s\n' "${PINNED_IMAGE}"
-
-gh attestation verify "oci://${PINNED_IMAGE}" \
-  --repo bi9bbl/fmo-ca-tool \
-  --signer-workflow bi9bbl/fmo-ca-tool/.github/workflows/docker.yml \
-  --source-ref "refs/tags/${TAG}" \
-  --source-digest "${AUDITED_COMMIT}" \
-  --deny-self-hosted-runners
-
-docker pull "${PINNED_IMAGE}"
-docker image inspect "${PINNED_IMAGE}" \
-  --format '{{json .Config.Labels}}'
-```
-
-Windows PowerShell：
-
-```powershell
-$Tag = "v1.0.0"
-$Repository = "ghcr.io/bi9bbl/fmo-ca-tool"
-$AuditedCommit = "<40_CHARACTER_AUDITED_COMMIT_SHA>"
-
-docker pull "${Repository}:${Tag}"
-$PinnedImage = docker image inspect "${Repository}:${Tag}" `
-  --format '{{index .RepoDigests 0}}'
-
-Write-Host "Pinned image: $PinnedImage"
-
-gh attestation verify "oci://${PinnedImage}" `
-  --repo bi9bbl/fmo-ca-tool `
-  --signer-workflow bi9bbl/fmo-ca-tool/.github/workflows/docker.yml `
-  --source-ref "refs/tags/${Tag}" `
-  --source-digest $AuditedCommit `
-  --deny-self-hosted-runners
-
-docker pull $PinnedImage
-docker image inspect $PinnedImage --format '{{json .Config.Labels}}'
-```
-
-验证单架构标签时，把拉取标签改为 `${TAG}-amd64` 或 `${TAG}-arm64`，但 `--source-ref` 仍必须使用产生该镜像的原始 Git tag `refs/tags/${TAG}`。工作流会为两个架构 manifest 分别生成 attestation。
-
-验证成功后，还应打开对应的公开 Action run，核对：
-
-- run 使用的 commit 与已审计 commit 相同。
-- `Build and publish audited multi-platform image` 步骤成功。
-- `Publish signed GitHub build attestation` 步骤成功。
-- run summary 中记录的 digest 与 `PINNED_IMAGE` 完全一致。
-
-任何一项不一致、attestation 缺失或验证失败时，都不要用该镜像生成 Root CA。
-
-## 从审计过的源码本地构建
-
-如果公开 package 尚不可用，或安全策略要求自行构建：
-
-```bash
-git clone https://github.com/bi9bbl/fmo-ca-tool.git
-cd fmo-ca-tool
-git checkout <AUDITED_COMMIT_SHA>
-git status --short
-
-docker build \
-  --label "org.opencontainers.image.revision=<AUDITED_COMMIT_SHA>" \
-  -t fmo-ca-tool:audited .
-
-docker run --rm --network none \
-  --read-only --cap-drop ALL \
-  --security-opt no-new-privileges:true \
-  fmo-ca-tool:audited --help
-```
-
-`git status --short` 必须为空。构建前应审计该 commit 中的 Dockerfile、lock file、证书 CBOR 编码、Ed25519 调用、安全写入逻辑和构建工作流。
-
-多架构构建：
-
-```bash
-docker buildx build \
-  --platform linux/amd64,linux/arm64 \
-  --provenance=mode=max \
-  --sbom=true \
-  --output type=oci,dest=fmo-ca-tool.oci .
-```
-
-## 快速运行
-
-本地构建：
-
-```bash
-docker build -t fmo-ca-tool:local .
-docker run --rm --network none fmo-ca-tool:local --help
-```
-
-公开镜像会自动选择当前主机架构：
-
-```bash
-docker pull ghcr.io/bi9bbl/fmo-ca-tool:latest
-docker image inspect ghcr.io/bi9bbl/fmo-ca-tool:latest \
-  --format '{{.Os}}/{{.Architecture}}'
-```
-
-也可以显式选择并验证 CPU 架构：
-
-```bash
-docker pull --platform linux/amd64 ghcr.io/bi9bbl/fmo-ca-tool:latest-amd64
-docker pull --platform linux/arm64 ghcr.io/bi9bbl/fmo-ca-tool:latest-arm64
-
-docker image inspect ghcr.io/bi9bbl/fmo-ca-tool:latest-amd64 \
-  --format '{{.Os}}/{{.Architecture}}'
-docker image inspect ghcr.io/bi9bbl/fmo-ca-tool:latest-arm64 \
-  --format '{{.Os}}/{{.Architecture}}'
-```
-
-已验证的公开镜像应写成不可变形式：
-
-```bash
-IMAGE='ghcr.io/bi9bbl/fmo-ca-tool@sha256:<VERIFIED_DIGEST>'
-docker run --rm --network none "${IMAGE}" --help
-```
-
-所有证书和私钥必须通过 bind mount 写入宿主机。不要把私钥写入容器层、Dockerfile、Compose environment、Docker secret、构建参数或镜像。
-
-## 完整 Docker 签发流程
-
-以下示例假设已经把经过验证的 digest 放入 `IMAGE`：
-
-```bash
-IMAGE='ghcr.io/bi9bbl/fmo-ca-tool@sha256:<VERIFIED_DIGEST>'
-mkdir -p ./pki
-chmod 700 ./pki
-```
-
-Linux 上使用当前 UID/GID，避免产生属于 root 或其他 UID 的私钥文件：
-
-```bash
-DOCKER_CA=(
-  docker run --rm
-  --network none
-  --user "$(id -u):$(id -g)"
-  --read-only
-  --cap-drop ALL
-  --security-opt no-new-privileges:true
-  --mount "type=bind,src=$(pwd)/pki,dst=/work/pki"
-  "${IMAGE}"
-)
-```
-
-### 1. 创建 Root CA
-
-```bash
-"${DOCKER_CA[@]}" init-root \
-  --name "BI9BBL FMO Root CA" \
-  --email "ca@example.com" \
-  --sn 900000001 \
-  --key-id "bi9bbl-root-2026" \
-  --crl "" --license "" \
-  --valid-days 3650 \
-  --out /work/pki/root
-```
-
-生成：
+证书体系采用固定的三级信任结构：
 
 ```text
-pki/root/root.key.json
-pki/root/root.cert.json
+Root CA（信任锚，自签名，pathLen = 1）
+└── Intermediate CA（签发约束，pathLen = 0）
+    └── User Certificate（终端或服务身份）
 ```
 
-### 2. 签发 Intermediate CA
+Root CA 只负责建立信任锚并签发 Intermediate CA；Intermediate CA 通过 UID 区间和签发国家集合表达授权范围，并承担日常 User Certificate 签发。User Certificate 绑定呼号、UID 与 Ed25519 公钥，不具备继续签发证书的能力。
 
-```bash
-"${DOCKER_CA[@]}" issue-intermediate \
-  --root-cert /work/pki/root/root.cert.json \
-  --root-key /work/pki/root/root.key.json \
-  --name "BI9BBL FMO Issuing CA" \
-  --email "ca@example.com" \
-  --sn 900001001 \
-  --key-id "bi9bbl-intermediate-2026" \
-  --uid-start 1 --uid-end 99999999 \
-  --countries CN \
-  --crl "" --license "" \
-  --valid-days 1825 \
-  --out /work/pki/intermediate
-```
+### 数据与签名边界
 
-生成：
+证书使用 JSON 作为持久化和交换格式，二进制字段使用无填充 Base64URL 表示。JSON 本身不参与签名；每类证书都先按协议规定的字段顺序编码为定长 CBOR 数组，再对该 CBOR 字节串执行 Ed25519 签名。
+
+这种设计将“可读的交换表示”与“唯一的密码学表示”分离：JSON 的缩进、属性顺序或空白变化不会改变签名输入与证书指纹。签名字段也不属于待签名内容，因此不存在递归编码。
+
+CBOR 编码固定使用 FMO V4 的字段顺序和数据类型。Root、Intermediate、User 的待签名数组长度分别为 15、20、9；整数按 64 位整数写入，任何字段重排、类型替换或改用 JSON 签名都会破坏协议兼容性。
+
+### 密钥职责与安全边界
+
+- Root 和 Intermediate 密钥在对应 CA 创建或签发阶段生成；私钥文件保存 32 字节 Ed25519 seed，文件本身不包含口令加密。
+- User 私钥默认由终端持有，CA 只接收 32 字节公钥。工具仅在显式请求时生成 User 私钥，以避免 CA 成为终端私钥的集中托管者。
+- 工具运行时不需要网络、数据库、MQTT、Docker socket 或其他外部服务，适合置于隔离环境中执行。
+- 输出采用原子写入，默认拒绝覆盖已有证书或私钥；签发前会检查证书与私钥匹配、上级签名、有效期和授权范围。
+- Docker 是项目的交付边界。公开构建生成 `linux/amd64` 与 `linux/arm64` 镜像、SBOM、provenance 和 GitHub build attestation，但供应链证明只说明构建来源，不能替代源码与密码学实现审计。
+
+### 实现分层
+
+| 层 | 主要位置 | 职责 |
+| --- | --- | --- |
+| 命令编排 | `src/FmoCaTool/Commands` | 参数约束、签发流程、签发后自校验 |
+| 证书模型 | `src/FmoCaTool/Certs` | FMO 字段、CBOR TBS 编码、证书验证与指纹 |
+| 密码学 | `src/FmoCaTool/Crypto` | Ed25519 密钥、签名、验签与 Base64URL 边界 |
+| 安全输出 | `src/FmoCaTool/IO` | 原子写入、权限设置与覆盖保护 |
+| 兼容性验证 | `tests` | 协议向量、JSON 往返、签名链与 CLI 行为测试 |
+
+## 数学模型说明
+
+### 记号
+
+设：
+
+- `CBOR_n([x_1, ..., x_n])` 表示严格按给定顺序编码、长度为 `n` 的 CBOR 数组。
+- `(sk_X, pk_X)` 表示实体 `X` 的 Ed25519 私钥与公钥；持久化私钥材料是用于派生密钥对的 32 字节 seed。
+- `S(sk, m)` 与 `V(pk, m, sig)` 分别表示 Ed25519 签名和验签。
+- `H(m) = SHA-256(m)`。
+- `iat_X`、`exp_X` 是证书 `X` 的 Unix 时间戳，单位为秒。
+
+文本、字节串、布尔值和整数分别编码为对应的 CBOR 类型；所有协议整数均通过有符号 64 位整数接口写入。下列元组的顺序也是协议的一部分。
+
+### Root CA
+
+Root CA 的待签名字节串为：
 
 ```text
-pki/intermediate/intermediate.key.json
-pki/intermediate/intermediate.cert.json
+T_R = CBOR_15([
+  "FMO", 4, "rootCA", sn_R,
+  issuerName_R, issuerEmail_R, subjectName_R, pk_R,
+  true, 1, crl_R, license_R, keyId_R, iat_R, exp_R
+])
 ```
 
-签发成功并备份 Root 材料后，应把 Root 私钥介质重新离线封存。日常 User Certificate 签发只使用 Intermediate 私钥。
-
-### 3. 签发 User Certificate
-
-普通终端应自己生成密钥，只把 32 字节 Ed25519 公钥交给 CA：
-
-```bash
-"${DOCKER_CA[@]}" issue-user \
-  --intermediate-cert /work/pki/intermediate/intermediate.cert.json \
-  --intermediate-key /work/pki/intermediate/intermediate.key.json \
-  --root-cert /work/pki/root/root.cert.json \
-  --callsign BI9BBL \
-  --uid 12345 \
-  --public-key '<BASE64URL_PUBLIC_KEY>' \
-  --valid-days 365 \
-  --out /work/pki/users/BI9BBL-12345.cert.json
-```
-
-只有服务器身份、实验室或测试环境才建议显式使用 `--generate-key`：
-
-```bash
-"${DOCKER_CA[@]}" issue-user \
-  --intermediate-cert /work/pki/intermediate/intermediate.cert.json \
-  --intermediate-key /work/pki/intermediate/intermediate.key.json \
-  --root-cert /work/pki/root/root.cert.json \
-  --callsign BI9BBL \
-  --uid 12345 \
-  --generate-key \
-  --valid-days 365 \
-  --out /work/pki/server
-```
-
-### 4. 计算 fingerprint
-
-```bash
-"${DOCKER_CA[@]}" fingerprint \
-  /work/pki/server/BI9BBL-12345.cert.json
-
-FP="$("${DOCKER_CA[@]}" fingerprint --quiet \
-  /work/pki/server/BI9BBL-12345.cert.json)"
-printf 'SAS_CERT_FINGERPRINT=%s\n' "${FP}"
-```
-
-Fingerprint 严格定义为：
+其中 `issuerName_R = subjectName_R`。Root 使用自身私钥签名并使用自身公钥验证：
 
 ```text
-SHA-256(certificate.ToTbsCbor())
+sig_R = S(sk_R, T_R)
+V(pk_R, T_R, sig_R) = true
 ```
 
-它不是 JSON 文件、公钥、签名或证书文件字节的哈希。
+### Intermediate CA
 
-## Compose 运行
+Intermediate CA 的待签名字节串为：
 
-Compose 默认只挂载 `./pki`，容器根文件系统只读，并移除全部 Linux capabilities。
-
-```bash
-mkdir -p ./pki
-chmod 700 ./pki
-export FMO_CA_UID="$(id -u)"
-export FMO_CA_GID="$(id -g)"
-
-docker compose build cli
-docker compose run --rm cli --help
-docker compose run --rm cli fingerprint \
-  /work/pki/server/BI9BBL-12345.cert.json
+```text
+T_I = CBOR_20([
+  "FMO", 4, "intermediateCA", sn_I,
+  sn_R, subjectName_R, pk_R,
+  subjectName_I, subjectEmail_I, pk_I,
+  true, 0, keyId_I, crl_I, license_I,
+  uidMin_I, uidMax_I, countries_I, iat_I, exp_I
+])
 ```
 
-如果要使用公开镜像，把 [`compose.yml`](compose.yml) 中的 `image` 改成已经验证的 `name@sha256:...`，并删除或禁用 `build` 段，避免本地重建与已验证 digest 混淆。
+`countries_I` 是经过规范化、去重并按序排列的两字母大写国家代码数组。Intermediate 由 Root 签名：
 
-## 真正离线生成 Root CA
-
-仅使用 `--network none` 不等于物理隔离。高价值 Root CA 推荐使用专用、无无线网卡或已禁用网络设备的离线主机。
-
-### 在线准备机
-
-在联网但不持有 Root 私钥的准备机上：
-
-1. 审计目标 Git commit。
-2. 按前文验证镜像 digest、workflow identity 和 attestation。
-3. 拉取与离线主机架构一致的镜像。
-4. 导出镜像并生成传输文件校验值。
-
-```bash
-PINNED_IMAGE='ghcr.io/bi9bbl/fmo-ca-tool@sha256:<VERIFIED_DIGEST>'
-
-docker pull "${PINNED_IMAGE}"
-docker tag "${PINNED_IMAGE}" fmo-ca-tool:verified-offline
-docker save fmo-ca-tool:verified-offline \
-  --output fmo-ca-tool-verified-offline.tar
-
-sha256sum fmo-ca-tool-verified-offline.tar \
-  > fmo-ca-tool-verified-offline.tar.sha256
+```text
+sig_I = S(sk_R, T_I)
+V(pk_R, T_I, sig_I) = true
 ```
 
-把以下材料通过干净、只用于传输的介质带入离线区：
+### User Certificate
 
-- `fmo-ca-tool-verified-offline.tar`
-- `.sha256` 校验文件
-- 审计过的 Git commit SHA 和公开 Action run URL 的纸质或只读记录
-- 在线验证成功的 attestation 输出
+User Certificate 的待签名字节串为：
 
-### 离线 CA 主机
-
-1. 物理断网并禁用无线接口。
-2. 校验传输文件。
-3. 导入镜像。
-4. 使用 `--network none`、只读根文件系统和只挂载加密 CA 介质的容器生成 Root。
-
-```bash
-sha256sum --check fmo-ca-tool-verified-offline.tar.sha256
-docker load --input fmo-ca-tool-verified-offline.tar
-
-mkdir -p /media/encrypted-ca/fmo-pki
-chmod 700 /media/encrypted-ca/fmo-pki
-
-docker run --rm \
-  --network none \
-  --user "$(id -u):$(id -g)" \
-  --read-only \
-  --cap-drop ALL \
-  --security-opt no-new-privileges:true \
-  --mount type=bind,src=/media/encrypted-ca/fmo-pki,dst=/work/pki \
-  fmo-ca-tool:verified-offline \
-  init-root \
-  --name "BI9BBL FMO Root CA" \
-  --email "ca@example.com" \
-  --sn 900000001 \
-  --key-id "bi9bbl-root-2026" \
-  --crl "" --license "" \
-  --valid-days 3650 \
-  --out /work/pki/root
+```text
+T_U = CBOR_9([
+  "FMO", 4, "userCert", sn_I,
+  callsign_U, uid_U, pk_U, iat_U, exp_U
+])
 ```
 
-生成后先签发所需 Intermediate CA、验证证书，再卸载并封存 Root 私钥介质。不要把离线 Root 私钥复制回联网准备机。
+User Certificate 由 Intermediate 签名：
 
-## 私钥如何保管
-
-### 私钥文件没有口令加密
-
-`*.key.json` 中的 `privateKey` 是无 padding base64url 表示的 **32 字节 Ed25519 seed 明文**。JSON 文件本身没有密码、KDF 或加密保护。
-
-Docker 的只读根文件系统、非 root 用户和 `0600` 权限不能替代静态加密。生产私钥必须放在宿主机的加密卷或加密可移动介质中，例如受组织策略管理的 LUKS、BitLocker 或等效全盘/卷加密设施。
-
-### Root private key
-
-- 最高安全等级，只在物理隔离的离线 CA 环境使用。
-- 至少制作两份加密、离线、地理隔离的备份；分别保管恢复凭据。
-- 建议双人控制、访问登记、定期恢复演练和介质健康检查。
-- 不得进入 Git、云盘、邮件、聊天工具、工单、CI artifact、Docker image、Docker volume snapshot 或长期运行服务器。
-- 不得放入 SAS、EMQX、FAS 或 `fmo-server-suite`。
-- 生产目录不要使用 `--force`；它允许覆盖现有私钥。
-- SSD、写时复制文件系统和快照环境中，普通删除不等于安全擦除。优先在独立加密卷中操作，退役时销毁加密密钥并按组织介质销毁流程处理。
-
-Root certificate 不是秘密。应单独保存多份公开副本，并部署到 SAS trust store 和信任该 PKI 的设备。
-
-### Intermediate private key
-
-- 用于日常 User Certificate 签发，应与 Root 私钥分离。
-- 可以部署在受控签发主机，但仍应使用加密磁盘、最小权限、离线备份和访问审计。
-- Intermediate 泄露时应停止签发、吊销/替换该 Intermediate，并评估所有下级证书。
-
-### User private key
-
-- 普通终端应在终端自身生成，CA 默认只接收 `--public-key` 或 `--public-key-file`。
-- 不要为了方便集中生成并保存所有终端私钥。
-- `--generate-key` 主要用于服务器身份、测试和开发环境；生成的 key 文件同样是明文 seed。
-
-### 宿主机权限
-
-Linux：
-
-```bash
-chmod 700 ./pki ./pki/root ./pki/intermediate
-chmod 600 ./pki/root/*.key.json ./pki/intermediate/*.key.json
+```text
+sig_U = S(sk_I, T_U)
+V(pk_I, T_U, sig_U) = true
 ```
 
-容器运行时应使用当前宿主用户的 UID/GID。Windows 环境应使用专用账户、限制 NTFS ACL，并把目录放在启用 BitLocker 或等效保护的卷中。
+### 约束与证书链判定
 
-不要把 Docker socket 挂入 CA 容器。能够访问 Docker daemon 的用户通常等价于拥有宿主机高权限，可能读取 bind mount 中的私钥。
+签发模型至少满足以下结构约束：
 
-## 镜像运行安全边界
+```text
+sn_R > 0
+sn_I > 0
+sn_I != sn_R
 
-推荐始终使用：
+0 <= uidMin_I <= uid_U <= uidMax_I
 
-- `--network none`
-- `--read-only`
-- `--cap-drop ALL`
-- `--security-opt no-new-privileges:true`
-- 非 root UID/GID
-- 只挂载本次命令实际需要的 CA 目录
-- 经过 attestation 验证的不可变 image digest
+iat_R < exp_R
+iat_I < exp_I <= exp_R
+iat_U < exp_U <= exp_I
 
-镜像不需要网络、数据库、MQTT、Docker socket 或其他服务。它不会启动 SAS、修改其他仓库或编辑 `fmo-server-suite`。
+len(pk_R) = len(pk_I) = len(pk_U) = 32 bytes
+len(sig_R) = len(sig_I) = len(sig_U) = 64 bytes
+```
 
-当前镜像只公开四个命令：`init-root`、`issue-intermediate`、`issue-user` 和 `fingerprint`。不包含 CRL 签发、daemon、Web UI 或在线 CA 服务。
+Intermediate 中的 `issuerSn`、`issuerName`、`issuerPublicKey` 必须分别绑定 Root 的序列号、主体名称和公钥。User 中的 `issuerSn` 必须绑定 Intermediate 的序列号。给定受信任 Root `R`、Intermediate `I`、User `U` 和校验时刻 `t`，完整信任关系可写为：
 
-## License
+```text
+ChainValid(R, I, U, t) =
+    TrustedAnchor(R)
+  AND V(pk_R, T_R, sig_R)
+  AND BindIssuer(R, I)
+  AND V(pk_R, T_I, sig_I)
+  AND (uidMin_I <= uid_U <= uidMax_I)
+  AND (sn_I = issuerSn_U)
+  AND V(pk_I, T_U, sig_U)
+  AND (t < exp_R)
+  AND (t < exp_I)
+  AND (t < exp_U)
+```
 
-本项目采用 GNU General Public License v3.0。镜像内包含 `/licenses/fmo-ca-tool/LICENSE`，完整来源和兼容性说明见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+`TrustedAnchor(R)` 不能仅由自签名推出；它表示调用方已经通过可信渠道配置了该 Root。自签名证明证书未被修改，但不会自动赋予任何未知 Root 信任。
+
+### 指纹
+
+任意证书 `X` 的 FMO 指纹定义为：
+
+```text
+Fingerprint(X) = H(T_X) = SHA-256(X.ToTbsCbor())
+```
+
+指纹输入不包括 JSON 文件字节、JSON 格式、公钥单独值或签名字节。Base64URL 与十六进制只是同一个 32 字节哈希值的输出表示，不改变指纹本身。
