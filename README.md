@@ -9,7 +9,7 @@
 - 由 Intermediate CA 签发 User Certificate。
 - 计算协议定义的证书指纹。
 
-项目只公开 `init-root`、`issue-intermediate`、`issue-user` 和 `fingerprint` 四个命令，不提供守护进程、Web UI、在线 CA 服务或 CRL 签发服务。运行、镜像验证、签发流程、离线部署与私钥保管方法统一见[操作指南](docs/operations.md)。
+项目只公开 `init-root`、`issue-intermediate`、`issue-user` 和 `fingerprint` 四个命令，不提供守护进程、Web UI、在线 CA 服务或 CRL 签发服务。运行、镜像验证、签发流程、离线部署与私钥保管方法统一见[操作指南](docs/usage.md)。
 
 本实现以与 SAS 的字节级兼容为目标：Root、Intermediate 和 User Certificate 的待签名 CBOR 已与 SAS 实现逐字节比对，证书链签名验证与 Root trust store 加载也通过兼容性验证。项目采用 [GNU General Public License v3.0](LICENSE)，兼容性来源与第三方组件见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
