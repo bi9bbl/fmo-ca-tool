@@ -6,6 +6,79 @@ public sealed record FileContent(string Path, string Content, bool Secret);
 
 public static class SafeFileWriter
 {
+    public static void WriteBytesAtomically(string path, byte[] content, bool force)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        var finalPath = Path.GetFullPath(path);
+        var directory = Path.GetDirectoryName(finalPath) ?? Directory.GetCurrentDirectory();
+        Directory.CreateDirectory(directory);
+        if (File.Exists(finalPath) && !force)
+        {
+            throw new CliException($"Output file already exists: {finalPath}. Use --force to overwrite it.");
+        }
+
+        if (Directory.Exists(finalPath))
+        {
+            throw new CliException($"Output path is a directory: {finalPath}");
+        }
+
+        var tempPath = Path.Combine(directory, $".{Path.GetFileName(finalPath)}.{Guid.NewGuid():N}.tmp");
+        var backupPath = Path.Combine(directory, $".{Path.GetFileName(finalPath)}.{Guid.NewGuid():N}.bak");
+        var hasBackup = false;
+        try
+        {
+            using (var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
+            {
+                stream.Write(content);
+                stream.Flush(flushToDisk: true);
+            }
+
+            if (File.Exists(finalPath))
+            {
+                File.Move(finalPath, backupPath);
+                hasBackup = true;
+            }
+
+            File.Move(tempPath, finalPath);
+            if (hasBackup)
+            {
+                TryDelete(backupPath);
+                hasBackup = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            TryDelete(tempPath);
+            if (hasBackup && !File.Exists(finalPath))
+            {
+                try
+                {
+                    File.Move(backupPath, finalPath);
+                    hasBackup = false;
+                }
+                catch
+                {
+                    // Preserve the original error; the backup remains recoverable.
+                }
+            }
+
+            if (ex is CliException)
+            {
+                throw;
+            }
+
+            throw new CliException($"Could not write output file atomically: {ex.Message}", ex);
+        }
+        finally
+        {
+            TryDelete(tempPath);
+            if (!hasBackup)
+            {
+                TryDelete(backupPath);
+            }
+        }
+    }
+
     public static void WriteAtomically(IReadOnlyCollection<FileContent> files, bool force)
     {
         if (files.Count == 0)

@@ -49,6 +49,17 @@ internal static class IssueUserCommand
             throw new CliException($"UID {uid} is outside Intermediate range [{intermediate.UidRangeStart}, {intermediate.UidRangeEnd}].");
         }
 
+        var inferredCountry = CallsignCountry.Infer(callsign);
+        if (inferredCountry is null)
+        {
+            error.WriteLine("WARNING: Could not infer a country from the callsign; issuingCountries was not checked.");
+        }
+        else if (intermediate.IssuingCountries.Length > 0 &&
+                 !intermediate.IssuingCountries.Contains(inferredCountry, StringComparer.Ordinal))
+        {
+            throw new CliException($"Callsign country {inferredCountry} is outside the Intermediate issuingCountries scope.");
+        }
+
         var (iat, exp) = OptionValues.GetValidity(options);
         if (exp > intermediate.Exp)
         {

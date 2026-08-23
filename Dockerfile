@@ -28,7 +28,7 @@ RUN dotnet publish src/FmoCaTool/FmoCaTool.csproj \
 FROM mcr.microsoft.com/dotnet/runtime-deps:10.0-noble-chiseled@sha256:afd8faf9aca00ee69b44b33631665e654e2423e143b6362dffe52c006cd7c4e6 AS final
 
 LABEL org.opencontainers.image.title="fmo-ca-tool" \
-      org.opencontainers.image.description="Offline FMO V4 custom PKI certificate authority CLI" \
+      org.opencontainers.image.description="Offline FMO V4 PKI certificate, CRL, verification, key, and QR CLI" \
       org.opencontainers.image.source="https://github.com/bi9bbl/fmo-ca-tool" \
       org.opencontainers.image.licenses="GPL-3.0-only"
 

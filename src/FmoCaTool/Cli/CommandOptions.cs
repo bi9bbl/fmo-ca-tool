@@ -6,10 +6,10 @@ namespace FmoCaTool.Cli;
 
 public sealed class CommandOptions
 {
-    private readonly Dictionary<string, string> _values;
+    private readonly Dictionary<string, List<string>> _values;
     private readonly HashSet<string> _flags;
 
-    private CommandOptions(Dictionary<string, string> values, HashSet<string> flags, List<string> positionals)
+    private CommandOptions(Dictionary<string, List<string>> values, HashSet<string> flags, List<string> positionals)
     {
         _values = values;
         _flags = flags;
@@ -21,9 +21,11 @@ public sealed class CommandOptions
     public static CommandOptions Parse(
         string[] args,
         IReadOnlySet<string> valueOptions,
-        IReadOnlySet<string> flagOptions)
+        IReadOnlySet<string> flagOptions,
+        IReadOnlySet<string>? repeatableValueOptions = null)
     {
-        var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        repeatableValueOptions ??= new HashSet<string>(StringComparer.Ordinal);
+        var values = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         var flags = new HashSet<string>(StringComparer.Ordinal);
         var positionals = new List<string>();
 
@@ -58,7 +60,7 @@ public sealed class CommandOptions
                 throw new CliException($"Unknown option: {name}");
             }
 
-            if (values.ContainsKey(name))
+            if (values.ContainsKey(name) && !repeatableValueOptions.Contains(name))
             {
                 throw new CliException($"Option {name} was specified more than once.");
             }
@@ -78,7 +80,13 @@ public sealed class CommandOptions
                 value = args[index];
             }
 
-            values.Add(name, value);
+            if (!values.TryGetValue(name, out var optionValues))
+            {
+                optionValues = [];
+                values.Add(name, optionValues);
+            }
+
+            optionValues.Add(value);
         }
 
         return new CommandOptions(values, flags, positionals);
@@ -90,12 +98,17 @@ public sealed class CommandOptions
 
     public string Require(string name)
     {
-        if (!_values.TryGetValue(name, out var value))
+        if (!_values.TryGetValue(name, out var values))
         {
             throw new CliException($"Required option is missing: {name}");
         }
 
-        return value;
+        if (values.Count != 1)
+        {
+            throw new CliException($"Option {name} must be specified exactly once.");
+        }
+
+        return values[0];
     }
 
     public string RequireNonEmpty(string name)
@@ -109,7 +122,15 @@ public sealed class CommandOptions
         return value;
     }
 
-    public string? Optional(string name) => _values.GetValueOrDefault(name);
+    public string? Optional(string name) => _values.TryGetValue(name, out var values)
+        ? values.Count == 1
+            ? values[0]
+            : throw new CliException($"Option {name} must be specified at most once.")
+        : null;
+
+    public IReadOnlyList<string> Values(string name) => _values.TryGetValue(name, out var values)
+        ? values
+        : [];
 
     public long RequireInt64(string name, long? minimum = null)
     {

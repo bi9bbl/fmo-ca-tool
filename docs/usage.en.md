@@ -2,7 +2,7 @@
 
 [简体中文](usage.md) | [Project README](../README.en.md)
 
-This guide covers image acquisition and verification, local builds, certificate issuance, offline deployment, and private-key storage for `fmo-ca-tool`. See the [project README](../README.en.md) for the project overview, protocol design, and model.
+This guide covers image acquisition and verification, local builds, certificate issuance, chain and CRL verification, two-level CRL issuance, endpoint keys, QR codes, offline deployment, and private-key storage for `fmo-ca-tool`. See the [project README](../README.en.md) for the project overview, protocol design, and model.
 
 ## Images and public builds
 
@@ -300,6 +300,98 @@ SHA-256(certificate.ToTbsCbor())
 
 It is not a hash of the JSON file, public key, signature, or certificate-file bytes.
 
+### 5. Generate an Ed25519 key on the endpoint
+
+A normal User private key should be generated on the actual endpoint. The directory in this example must be endpoint-controlled storage, not a centralized CA key archive:
+
+```bash
+"${DOCKER_CA[@]}" generate-key \
+  --name endpoint \
+  --out /work/pki/endpoint
+```
+
+This creates `endpoint.key.json` and `endpoint.public.key`, which contains only the Base64URL public key. The former still contains an unencrypted 32-byte seed and must be protected as a private key. Send the latter to the CA through `issue-user --public-key-file`.
+
+### 6. Verify a certificate chain
+
+```bash
+"${DOCKER_CA[@]}" verify \
+  --root /work/pki/root/root.cert.json \
+  --intermediate /work/pki/intermediate/intermediate.cert.json \
+  --user /work/pki/users/BI9BBL-12345.cert.json
+```
+
+`verify` checks structure, signatures, issuer-field bindings, UID/country authorization scope, and current validity. Use `--at UNIX` for deterministic validation at a historical or future time. `VALID` returns exit code `0`; an invalid signature or chain, a not-yet-valid or expired certificate, or an effective revocation returns `3`. The caller must still establish the supplied Root as a trust anchor through a trusted channel; a Root self-signature alone does not establish trust.
+
+### 7. Issue and verify two-level CRLs
+
+A Root CRL is signed by the offline Root key and revokes only Intermediate CAs:
+
+```bash
+"${DOCKER_CA[@]}" issue-root-crl \
+  --root-cert /work/pki/root/root.cert.json \
+  --root-key /work/pki/root/root.key.json \
+  --crl-number 1 \
+  --valid-days 1 \
+  --revoke /work/pki/intermediate/intermediate.cert.json \
+  --reason 1 \
+  --out /work/pki/crl/root.crl.json
+```
+
+An Intermediate CRL is signed by the Intermediate key and revokes only User Certificates:
+
+```bash
+"${DOCKER_CA[@]}" issue-intermediate-crl \
+  --intermediate-cert /work/pki/intermediate/intermediate.cert.json \
+  --intermediate-key /work/pki/intermediate/intermediate.key.json \
+  --crl-number 1 \
+  --valid-days 1 \
+  --revoke /work/pki/users/BI9BBL-12345.cert.json \
+  --reason 1 \
+  --out /work/pki/crl/intermediate.crl.json
+```
+
+Every published `crlNumber` must exceed the previous version from the same issuer. `--revoke` is repeatable. In that mode one `--reason` and `--revoked-at` apply to every certificate; omitting `--revoked-at` uses `thisUpdate`. Use an `--entries` JSON file when entries need different times or reasons:
+
+```json
+[
+  {
+    "certificate": "../intermediate/intermediate.cert.json",
+    "revokedAt": 1783291800,
+    "reason": 1
+  }
+]
+```
+
+Relative certificate paths in the manifest resolve against the manifest directory. Root CRL reason codes are `0 unspecified`, `1 keyCompromise`, `2 caCompromise`, `3 superseded`, `4 privilegeWithdrawn`, and `5 cessationOfOperation`. An Intermediate CRL has no `caCompromise`; its codes `2` through `4` are `superseded`, `privilegeWithdrawn`, and `cessationOfOperation`.
+
+When CRLs are supplied, verification first checks each CRL signature and issuer, then checks the specific certificate through the combined `sn/uid + certFingerprint` match:
+
+```bash
+"${DOCKER_CA[@]}" verify \
+  --root /work/pki/root/root.cert.json \
+  --intermediate /work/pki/intermediate/intermediate.cert.json \
+  --user /work/pki/users/BI9BBL-12345.cert.json \
+  --root-crl /work/pki/crl/root.crl.json \
+  --intermediate-crl /work/pki/crl/intermediate.crl.json
+```
+
+A CRL past `nextUpdate` produces a prominent warning while still showing its signature result. Do not treat that result as current revocation status until the CRL is refreshed. The tool does not download or publish CRLs and does not replace a cache automatically.
+
+### 8. Generate a QR code from text or a file
+
+```bash
+"${DOCKER_CA[@]}" qr \
+  --text 'FMO V4 certificate' \
+  --out /work/pki/qr/certificate.png
+
+"${DOCKER_CA[@]}" qr \
+  --file /work/pki/users/BI9BBL-12345.cert.json \
+  --out /work/pki/qr/user-certificate.png
+```
+
+UTF-8 files are encoded as text; other files are first converted to Base64. The tool never discovers or reads private keys automatically and never truncates input that exceeds QR capacity; insufficient capacity is an error. Do not turn a private key or seed into a QR code unless a separate, audited key-transfer procedure requires it.
+
 ## Run with Compose
 
 By default, Compose mounts only `./pki`, makes the container root filesystem read-only, and drops all Linux capabilities.
@@ -456,7 +548,7 @@ Always prefer:
 
 The image requires no network, database, MQTT service, Docker socket, or other service. It does not start SAS, modify other repositories, or edit `fmo-server-suite`.
 
-The image exposes only four commands: `init-root`, `issue-intermediate`, `issue-user`, and `fingerprint`. It contains no CRL issuance, daemon, Web UI, or online CA service.
+The image exposes nine offline commands: `init-root`, `issue-intermediate`, `issue-user`, `verify`, `issue-root-crl`, `issue-intermediate-crl`, `generate-key`, `qr`, and `fingerprint`. It contains no daemon, Web UI, online CA, OCSP responder, CRL download/publication, or automatic cache-replacement service.
 
 ## Related documents
 

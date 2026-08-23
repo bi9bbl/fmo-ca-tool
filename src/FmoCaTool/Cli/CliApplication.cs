@@ -27,6 +27,11 @@ public static class CliApplication
                 "init-root" => InitRootCommand.Run(commandArgs, output, error),
                 "issue-intermediate" => IssueIntermediateCommand.Run(commandArgs, output, error),
                 "issue-user" => IssueUserCommand.Run(commandArgs, output, error),
+                "verify" => VerifyCommand.Run(commandArgs, output),
+                "issue-root-crl" => IssueRootCrlCommand.Run(commandArgs, output, error),
+                "issue-intermediate-crl" => IssueIntermediateCrlCommand.Run(commandArgs, output, error),
+                "generate-key" => GenerateKeyCommand.Run(commandArgs, output, error),
+                "qr" => QrCommand.Run(commandArgs, output, error),
                 "fingerprint" => FingerprintCommand.Run(commandArgs, output),
                 _ => throw new CliException($"Unknown command '{command}'. Run fmo-ca-tool --help for usage.")
             };

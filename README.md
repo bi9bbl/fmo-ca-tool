@@ -7,11 +7,16 @@
 - 创建自签名 Root CA。
 - 由 Root CA 签发 Intermediate CA。
 - 由 Intermediate CA 签发 User Certificate。
+- 验证 Root、Intermediate、User Certificate、完整证书链和有效期。
+- 由 Root 签发 Root CRL，按 `sn + certFingerprint` 吊销具体 Intermediate CA。
+- 由 Intermediate 签发 Intermediate CRL，按 `uid + certFingerprint` 吊销具体 User Certificate。
+- 验证 CRL 签名、更新窗口和证书吊销状态。
+- 在终端侧生成 Ed25519 密钥对，并从文本或文件生成二维码 PNG。
 - 计算协议定义的证书指纹。
 
-项目只公开 `init-root`、`issue-intermediate`、`issue-user` 和 `fingerprint` 四个命令，不提供守护进程、Web UI、在线 CA 服务或 CRL 签发服务。运行、镜像验证、签发流程、离线部署与私钥保管方法统一见[操作指南](docs/usage.md)。
+项目公开 `init-root`、`issue-intermediate`、`issue-user`、`verify`、`issue-root-crl`、`issue-intermediate-crl`、`generate-key`、`qr` 和 `fingerprint` 九个命令，不提供守护进程、Web UI、在线 CA、OCSP 或自动发布服务。运行、镜像验证、签发与吊销流程、离线部署及私钥保管方法统一见[操作指南](docs/usage.md)。
 
-本实现以与 SAS 的字节级兼容为目标：Root、Intermediate 和 User Certificate 的待签名 CBOR 已与 SAS 实现逐字节比对，证书链签名验证与 Root trust store 加载也通过兼容性验证。项目采用 [GNU General Public License v3.0](LICENSE)，兼容性来源与第三方组件见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+本实现以与 SAS 和 FMO 官方格式工具的字节级兼容为目标：Root、Intermediate 和 User Certificate 的待签名 CBOR 已与 SAS 实现逐字节比对；Root/Intermediate CRL 的待签名 CBOR 已与官方参考工具逐字节比对；证书链签名验证与 Root trust store 加载也通过兼容性验证。项目采用 [GNU General Public License v3.0](LICENSE)，兼容性来源与第三方组件见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 设计说明
 
@@ -21,24 +26,27 @@
 
 ```text
 Root CA（信任锚，自签名，pathLen = 1）
+├── Root CRL（吊销具体 Intermediate CA）
 └── Intermediate CA（签发约束，pathLen = 0）
+    ├── Intermediate CRL（吊销具体 User Certificate）
     └── User Certificate（终端或服务身份）
 ```
 
-Root CA 只负责建立信任锚并签发 Intermediate CA；Intermediate CA 通过 UID 区间和签发国家集合表达授权范围，并承担日常 User Certificate 签发。User Certificate 绑定呼号、UID 与 Ed25519 公钥，不具备继续签发证书的能力。
+Root CA 负责建立信任锚、签发 Intermediate CA 并离线签发 Root CRL；Intermediate CA 通过 UID 区间和签发国家集合表达授权范围，承担日常 User Certificate 与 Intermediate CRL 签发。User Certificate 绑定呼号、UID 与 Ed25519 公钥，不具备继续签发证书的能力。CRL 是公开且可缓存的签名对象，不包含私钥。
 
 ### 数据与签名边界
 
-证书使用 JSON 作为持久化和交换格式，二进制字段使用无填充 Base64URL 表示。JSON 本身不参与签名；每类证书都先按协议规定的字段顺序编码为定长 CBOR 数组，再对该 CBOR 字节串执行 Ed25519 签名。
+证书和 CRL 使用 JSON 作为持久化和交换格式，二进制字段使用无填充 Base64URL 表示。JSON 本身不参与签名；每类对象都先按协议规定的字段顺序编码为定长 CBOR 数组，再对该 CBOR 字节串执行 Ed25519 签名。
 
 这种设计将“可读的交换表示”与“唯一的密码学表示”分离：JSON 的缩进、属性顺序或空白变化不会改变签名输入与证书指纹。签名字段也不属于待签名内容，因此不存在递归编码。
 
-CBOR 编码固定使用 FMO V4 的字段顺序和数据类型。Root、Intermediate、User 的待签名数组长度分别为 15、20、9；整数按 64 位整数写入，任何字段重排、类型替换或改用 JSON 签名都会破坏协议兼容性。
+CBOR 编码固定使用 FMO V4 的字段顺序和数据类型。Root、Intermediate、User 的待签名数组长度分别为 15、20、9；两类 CRL 的外层待签名数组长度均为 8，吊销条目是固定 4 项的嵌套数组。整数按 64 位整数写入，任何字段重排、类型替换或改用 JSON 签名都会破坏协议兼容性。CRL 条目先按 `sn` 或 `uid` 升序排列，再按 32 字节指纹的原始字节序排列。
 
 ### 密钥职责与安全边界
 
 - Root 和 Intermediate 密钥在对应 CA 创建或签发阶段生成；私钥文件保存 32 字节 Ed25519 seed，文件本身不包含口令加密。
 - User 私钥默认由终端持有，CA 只接收 32 字节公钥。工具仅在显式请求时生成 User 私钥，以避免 CA 成为终端私钥的集中托管者。
+- `generate-key` 用于终端自行生成密钥；`qr` 只编码显式提供的文本或文件，不会自动读取证书或私钥。
 - 工具运行时不需要网络、数据库、MQTT、Docker socket 或其他外部服务，适合置于隔离环境中执行。
 - 输出采用原子写入，默认拒绝覆盖已有证书或私钥；签发前会检查证书与私钥匹配、上级签名、有效期和授权范围。
 - Docker 是项目的交付边界。公开构建生成 `linux/amd64` 与 `linux/arm64` 镜像、SBOM、provenance 和 GitHub build attestation，但供应链证明只说明构建来源，不能替代源码与密码学实现审计。
@@ -49,6 +57,7 @@ CBOR 编码固定使用 FMO V4 的字段顺序和数据类型。Root、Intermedi
 | --- | --- | --- |
 | 命令编排 | `src/FmoCaTool/Commands` | 参数约束、签发流程、签发后自校验 |
 | 证书模型 | `src/FmoCaTool/Certs` | FMO 字段、CBOR TBS 编码、证书验证与指纹 |
+| CRL 模型 | `src/FmoCaTool/Crls` | 两级 CRL、CBOR TBS 编码、规范排序与 JSON 边界 |
 | 密码学 | `src/FmoCaTool/Crypto` | Ed25519 密钥、签名、验签与 Base64URL 边界 |
 | 安全输出 | `src/FmoCaTool/IO` | 原子写入、权限设置与覆盖保护 |
 | 兼容性验证 | `tests` | 协议向量、JSON 往返、签名链与 CLI 行为测试 |
@@ -125,6 +134,36 @@ sig_U = S(sk_I, T_U)
 V(pk_I, T_U, sig_U) = true
 ```
 
+### 两级 CRL
+
+Root CRL 的待签名字节串和签名为：
+
+```text
+T_RL = CBOR_8([
+  "FMO", 4, "rootCRL", sn_R, crlNumber_R,
+  thisUpdate_R, nextUpdate_R,
+  [[sn_I, H(T_I), revokedAt, reason], ...]
+])
+
+sig_RL = S(sk_R, T_RL)
+V(pk_R, T_RL, sig_RL) = true
+```
+
+Intermediate CRL 的模型为：
+
+```text
+T_IL = CBOR_8([
+  "FMO", 4, "intermediateCRL", sn_I, crlNumber_I,
+  thisUpdate_I, nextUpdate_I,
+  [[uid_U, H(T_U), revokedAt, reason], ...]
+])
+
+sig_IL = S(sk_I, T_IL)
+V(pk_I, T_IL, sig_IL) = true
+```
+
+`H(T_I)` 与 `H(T_U)` 在 CBOR 中是 32 字节 byte string，在 JSON 中才表示为 Base64URL。Root CRL 只有 `sn_I` 与 `H(T_I)` 同时匹配且 `revokedAt <= t` 时才吊销 Intermediate；Intermediate CRL 同理要求 `uid_U` 与 `H(T_U)` 同时匹配。仅序列号或 UID 命中不会误伤后来重新签发的证书。
+
 ### 约束与证书链判定
 
 签发模型至少满足以下结构约束：
@@ -155,12 +194,16 @@ ChainValid(R, I, U, t) =
   AND (uidMin_I <= uid_U <= uidMax_I)
   AND (sn_I = issuerSn_U)
   AND V(pk_I, T_U, sig_U)
+  AND NotRevoked_RL(I, t)
+  AND NotRevoked_IL(U, t)
   AND (t < exp_R)
   AND (t < exp_I)
   AND (t < exp_U)
 ```
 
 `TrustedAnchor(R)` 不能仅由自签名推出；它表示调用方已经通过可信渠道配置了该 Root。自签名证明证书未被修改，但不会自动赋予任何未知 Root 信任。
+
+`NotRevoked_RL` 与 `NotRevoked_IL` 以调用方提供且验签通过的 CRL 为依据；没有取得最新 CRL 时，只能确认签名链，不能声称吊销状态是最新的。
 
 ### 指纹
 

@@ -13,6 +13,12 @@ internal static class HelpText
           init-root          Create a self-signed FMO Root CA
           issue-intermediate Issue an Intermediate CA from a Root CA
           issue-user         Issue a User Certificate from an Intermediate CA
+          verify             Verify certificates, chains, CRLs, and revocation status
+          issue-root-crl     Issue a Root CRL for Intermediate CA revocation
+          issue-intermediate-crl
+                             Issue an Intermediate CRL for User revocation
+          generate-key       Generate an endpoint-owned Ed25519 key pair
+          qr                 Generate a QR code PNG from text or a file
           fingerprint        Compute SHA-256 over a certificate's TBS CBOR
 
         Global options:
@@ -62,5 +68,70 @@ internal static class HelpText
           fmo-ca-tool fingerprint [--format base64url|hex] [--quiet] CERTIFICATE.json
 
         Fingerprints SHA-256(ToTbsCbor()), never the JSON file bytes.
+        """);
+
+    public static void WriteVerify(TextWriter writer) => writer.WriteLine(
+        """
+        Usage:
+          fmo-ca-tool verify [--root ROOT.json]
+            [--intermediate INTERMEDIATE.json] [--user USER.json]
+            [--root-crl ROOT-CRL.json] [--intermediate-crl INTERMEDIATE-CRL.json]
+            [--at UNIX]
+
+        Dependencies are explicit: --intermediate requires --root, --user requires
+        --intermediate, and each CRL requires its issuer certificate. A stale CRL
+        produces a warning; a bad signature, invalid chain, or effective revocation
+        produces exit code 3.
+        """);
+
+    public static void WriteIssueRootCrl(TextWriter writer) => writer.WriteLine(
+        """
+        Usage:
+          fmo-ca-tool issue-root-crl --root-cert FILE --root-key FILE
+            --crl-number N (--valid-days N | --next-update UNIX)
+            [--this-update UNIX]
+            [--revoke INTERMEDIATE.json ... --reason 0..5 [--revoked-at UNIX]
+             | --entries ENTRIES.json]
+            --out FILE [--force]
+
+        With repeated --revoke, one reason and revokedAt apply to all certificates.
+        For per-entry values, ENTRIES.json is an array of objects containing
+        certificate, revokedAt, and reason. An empty CRL needs neither option.
+        """);
+
+    public static void WriteIssueIntermediateCrl(TextWriter writer) => writer.WriteLine(
+        """
+        Usage:
+          fmo-ca-tool issue-intermediate-crl --intermediate-cert FILE
+            --intermediate-key FILE --crl-number N
+            (--valid-days N | --next-update UNIX) [--this-update UNIX]
+            [--revoke USER.json ... --reason 0..4 [--revoked-at UNIX]
+             | --entries ENTRIES.json]
+            --out FILE [--force]
+
+        With repeated --revoke, one reason and revokedAt apply to all certificates.
+        For per-entry values, ENTRIES.json is an array of objects containing
+        certificate, revokedAt, and reason. An empty CRL needs neither option.
+        """);
+
+    public static void WriteGenerateKey(TextWriter writer) => writer.WriteLine(
+        """
+        Usage:
+          fmo-ca-tool generate-key [--name STEM] --out DIRECTORY [--force]
+
+        Creates STEM.key.json containing the plaintext 32-byte Ed25519 seed and
+        STEM.public.key containing only the unpadded Base64URL public key.
+        Generate endpoint keys on the endpoint; do not centralize User private keys.
+        """);
+
+    public static void WriteQr(TextWriter writer) => writer.WriteLine(
+        """
+        Usage:
+          fmo-ca-tool qr (--text TEXT | --file FILE) --out QR.png
+            [--ecc L|M|Q|H] [--pixels N] [--force]
+
+        UTF-8 files are encoded as text. Other files are encoded as Base64. The
+        command never truncates input: content exceeding QR capacity is rejected.
+        Private-key files are not selected or embedded automatically.
         """);
 }

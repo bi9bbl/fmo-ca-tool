@@ -2,7 +2,7 @@
 
 [English](usage.en.md) | [项目 README](../README.md)
 
-本文档集中说明 `fmo-ca-tool` 的镜像获取与验证、本地构建、证书签发、离线部署和私钥保管。项目定位、协议设计与数学模型见[项目 README](../README.md)。
+本文档集中说明 `fmo-ca-tool` 的镜像获取与验证、本地构建、证书签发、证书链与 CRL 验证、两级 CRL 签发、终端密钥、二维码、离线部署和私钥保管。项目定位、协议设计与数学模型见[项目 README](../README.md)。
 
 ## 镜像和公开构建
 
@@ -300,6 +300,98 @@ SHA-256(certificate.ToTbsCbor())
 
 它不是 JSON 文件、公钥、签名或证书文件字节的哈希。
 
+### 5. 在终端生成 Ed25519 密钥
+
+普通 User 私钥应在实际终端生成。下例中的目录必须是终端自身控制的存储，而不是 CA 的集中密钥库：
+
+```bash
+"${DOCKER_CA[@]}" generate-key \
+  --name endpoint \
+  --out /work/pki/endpoint
+```
+
+生成 `endpoint.key.json` 和只含 Base64URL 公钥的 `endpoint.public.key`。前者仍是未加密的 32 字节 seed，必须按私钥保护；把后者交给 CA 的 `issue-user --public-key-file`。
+
+### 6. 验证证书链
+
+```bash
+"${DOCKER_CA[@]}" verify \
+  --root /work/pki/root/root.cert.json \
+  --intermediate /work/pki/intermediate/intermediate.cert.json \
+  --user /work/pki/users/BI9BBL-12345.cert.json
+```
+
+`verify` 检查结构、签名、上级字段绑定、UID/国家授权范围和当前有效期。可用 `--at UNIX` 对历史或未来时间点执行确定性验证。`VALID` 的退出码是 `0`；无效签名、无效链、未生效/过期证书或已生效的吊销返回 `3`。调用方仍必须通过可信渠道确定传入的 Root 是信任锚；Root 自签名本身不能建立信任。
+
+### 7. 签发与验证两级 CRL
+
+Root CRL 由离线 Root 私钥签名，只吊销 Intermediate CA：
+
+```bash
+"${DOCKER_CA[@]}" issue-root-crl \
+  --root-cert /work/pki/root/root.cert.json \
+  --root-key /work/pki/root/root.key.json \
+  --crl-number 1 \
+  --valid-days 1 \
+  --revoke /work/pki/intermediate/intermediate.cert.json \
+  --reason 1 \
+  --out /work/pki/crl/root.crl.json
+```
+
+Intermediate CRL 由 Intermediate 私钥签名，只吊销 User Certificate：
+
+```bash
+"${DOCKER_CA[@]}" issue-intermediate-crl \
+  --intermediate-cert /work/pki/intermediate/intermediate.cert.json \
+  --intermediate-key /work/pki/intermediate/intermediate.key.json \
+  --crl-number 1 \
+  --valid-days 1 \
+  --revoke /work/pki/users/BI9BBL-12345.cert.json \
+  --reason 1 \
+  --out /work/pki/crl/intermediate.crl.json
+```
+
+每次发布的 `crlNumber` 必须比同一签发者的旧版本大。`--revoke` 可重复；该模式下同一个 `--reason` 和 `--revoked-at` 应用于所有证书，省略 `--revoked-at` 时使用 `thisUpdate`。需要不同时间或原因时使用 `--entries` JSON：
+
+```json
+[
+  {
+    "certificate": "../intermediate/intermediate.cert.json",
+    "revokedAt": 1783291800,
+    "reason": 1
+  }
+]
+```
+
+清单中的相对证书路径以清单文件所在目录为基准。Root CRL 原因码为 `0 unspecified`、`1 keyCompromise`、`2 caCompromise`、`3 superseded`、`4 privilegeWithdrawn`、`5 cessationOfOperation`；Intermediate CRL 没有 `caCompromise`，其 `2` 到 `4` 依次为 `superseded`、`privilegeWithdrawn`、`cessationOfOperation`。
+
+把 CRL 加入验证后，工具先验证 CRL 签名与签发者，再以 `sn/uid + certFingerprint` 双条件检查具体证书：
+
+```bash
+"${DOCKER_CA[@]}" verify \
+  --root /work/pki/root/root.cert.json \
+  --intermediate /work/pki/intermediate/intermediate.cert.json \
+  --user /work/pki/users/BI9BBL-12345.cert.json \
+  --root-crl /work/pki/crl/root.crl.json \
+  --intermediate-crl /work/pki/crl/intermediate.crl.json
+```
+
+超过 `nextUpdate` 的 CRL 会产生显著警告，但验签结果仍会显示；在刷新 CRL 前不要把该结果视为最新吊销状态。工具不下载或发布 CRL，也不自动替换缓存。
+
+### 8. 从文本或文件生成二维码
+
+```bash
+"${DOCKER_CA[@]}" qr \
+  --text 'FMO V4 certificate' \
+  --out /work/pki/qr/certificate.png
+
+"${DOCKER_CA[@]}" qr \
+  --file /work/pki/users/BI9BBL-12345.cert.json \
+  --out /work/pki/qr/user-certificate.png
+```
+
+UTF-8 文件按文本编码，其他文件先转换为 Base64。工具不会自动发现或读取私钥，也不会截断超过 QR 容量的输入；容量不足时会报错。不要把私钥或 seed 制作成二维码，除非已有独立、经过审计的密钥转移流程。
+
 ## Compose 运行
 
 Compose 默认只挂载 `./pki`，容器根文件系统只读，并移除全部 Linux capabilities。
@@ -456,7 +548,7 @@ chmod 600 ./pki/root/*.key.json ./pki/intermediate/*.key.json
 
 镜像不需要网络、数据库、MQTT、Docker socket 或其他服务。它不会启动 SAS、修改其他仓库或编辑 `fmo-server-suite`。
 
-当前镜像只公开四个命令：`init-root`、`issue-intermediate`、`issue-user` 和 `fingerprint`。不包含 CRL 签发、daemon、Web UI 或在线 CA 服务。
+当前镜像公开九个离线命令：`init-root`、`issue-intermediate`、`issue-user`、`verify`、`issue-root-crl`、`issue-intermediate-crl`、`generate-key`、`qr` 和 `fingerprint`。它不包含 daemon、Web UI、在线 CA、OCSP、CRL 下载/发布或自动缓存替换服务。
 
 ## 相关文档
 
